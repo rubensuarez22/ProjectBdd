@@ -97,7 +97,7 @@ if option == "Upload Documents":
             session.add(new_document)
         session.commit()  # Commit the transaction to the database
         st.session_state['documents'] = document_texts
-        st.success("Files uploaded and text extractaed successfully!")
+        st.success("Files uploaded and text extracted successfully!")
 
 # View documents
 elif option == "View Documents":
