@@ -41,12 +41,38 @@ option = st.sidebar.selectbox(
     ('Upload Documents', 'View Documents','Frequency Matrix', 'Indexing Terms', 'Document Query')
 )
 
-def process_text(text):
-    """Tokenizes, removes stopwords, and stems the text."""
+def tokenize(text):
+    """Tokenizes the text without removing any words."""
+    return [word for word in word_tokenize(text) if word.isalpha()]
+
+def remove_stopwords(text):
+    """Tokenizes the text and removes stopwords."""
+    tokens = word_tokenize(text)
+    stop_words = set(stopwords.words('english'))
+    return [word for word in tokens if word.isalpha() and word.lower() not in stop_words]
+
+def apply_stemming(text):
+    """Tokenizes and applies stemming to the text."""
+    tokens = word_tokenize(text)
+    stemmer = PorterStemmer()
+    return [stemmer.stem(word) for word in tokens if word.isalpha()]
+
+def process_text_full(text):
+    """Tokenizes, removes stopwords, and applies stemming to the text."""
     tokens = word_tokenize(text)
     stop_words = set(stopwords.words('english'))
     stemmer = PorterStemmer()
     return [stemmer.stem(word) for word in tokens if word.isalpha() and word.lower() not in stop_words]
+
+# Processing the documents based on the option
+document_processing_functions = {
+    "Original": tokenize,
+    "Stop List Removed": remove_stopwords,
+    "Suffix List Removed": apply_stemming,
+    "Word Stems": process_text_full
+}
+
+additional_stopwords = {'example', 'another'}
 
 if option == "Upload Documents":
     st.header("Upload Documents")
@@ -71,7 +97,7 @@ if option == "Upload Documents":
             session.add(new_document)
         session.commit()  # Commit the transaction to the database
         st.session_state['documents'] = document_texts
-        st.success("Files uploaded and text extracted successfully!")
+        st.success("Files uploaded and text extractaed successfully!")
 
 # View documents
 elif option == "View Documents":
@@ -86,34 +112,29 @@ elif option == "View Documents":
 elif option == "Frequency Matrix":
     st.header("Frequency Matrix")
     if 'documents' in st.session_state and st.session_state['documents']:
-        # Table of document identifiers and titles
-        doc_data = [{"Identifier": f"d{i+1}", "Article Title": text.split('\n')[0]} for i, text in enumerate(st.session_state['documents'].values())]
-        df_docs = pd.DataFrame(doc_data)
-        st.table(df_docs)
-        
-        # Process each document for word frequencies
-        doc_frequencies = defaultdict(dict)
+        matrix_data = {}
         doc_names = list(st.session_state['documents'].keys())
-        for doc_name, text in st.session_state['documents'].items():
-            processed_text = process_text(text)
-            word_count = Counter(processed_text)
-            for word, count in word_count.items():
-                doc_frequencies[word][doc_name] = count
 
-        # Create DataFrame from the nested dictionary
-        df_freq = pd.DataFrame.from_dict(doc_frequencies, orient='index').fillna(0).astype(int)
-        # Rename columns to identifiers like d1, d2, etc.
-        doc_ids = {doc_name: f"d{i+1}" for i, doc_name in enumerate(doc_names)}
-        df_freq.rename(columns=doc_ids, inplace=True)
+        for matrix_type, processing_function in document_processing_functions.items():
+            doc_frequencies = defaultdict(dict)
+            for doc_name, text in st.session_state['documents'].items():
+                processed_text = processing_function(text)
+                word_count = Counter(processed_text)
+                for word, count in word_count.items():
+                    doc_frequencies[word][doc_name] = count
 
-        st.write("Term-Document Frequency Matrix:")
-        st.dataframe(df_freq)
-        st.session_state['df_freq'] = df_freq
+            # Create DataFrame from the nested dictionary
+            df = pd.DataFrame.from_dict(doc_frequencies, orient='index').fillna(0).astype(int)
+            # Rename columns to identifiers like d1, d2, etc.
+            doc_ids = {doc_name: f"d{i+1}" for i, doc_name in enumerate(doc_names)}
+            df.rename(columns=doc_ids, inplace=True)
+            matrix_data[matrix_type] = df
+
+        for name, df in matrix_data.items():
+            st.write(f"{name} Frequency Matrix:")
+            st.dataframe(df)
     else:
         st.error("Please upload documents first using the 'Upload Documents' section.")
-
-
-# ... [The previous parts of your script remain unchanged]
 
 elif option == "Indexing Terms":
     st.header("Indexing Terms")
