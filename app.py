@@ -6,23 +6,39 @@ import nltk
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
 from nltk.tokenize import word_tokenize
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.decomposition import TruncatedSVD
 import matplotlib.pyplot as plt
-import numpy as np
-from numpy.linalg import svd
-
+from numpy.linalg import svd as svd
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine, Column, Integer, String, Text
 
 # Ensure NLTK components are downloaded
 nltk.download('punkt')
 nltk.download('stopwords')
+
+# Create our database
+engine = create_engine('sqlite:///mydatabase.db')
+
+Base = declarative_base()
+
+class Document(Base):
+    __tablename__ = 'documents'
+    id = Column(Integer, primary_key=True)
+    title = Column(String(255))
+    content = Column(Text)
+
+# Create the tables in the database
+Base.metadata.create_all(engine)
+
+Session = sessionmaker(bind=engine)
+session = Session()
 
 st.title("Advanced Document Management System")
 
 # Sidebar navigation setup
 option = st.sidebar.selectbox(
     'Choose a function',
-    ('Upload Documents', 'Frequency Matrix', 'Indexing Terms', 'Document Query')
+    ('Upload Documents', 'View Documents','Frequency Matrix', 'Indexing Terms', 'Document Query')
 )
 
 def process_text(text):
@@ -34,6 +50,11 @@ def process_text(text):
 
 if option == "Upload Documents":
     st.header("Upload Documents")
+
+    if st.button("Clear Database"):
+        session.query(Document).delete()
+        session.commit()
+    
     uploaded_files = st.file_uploader("Choose PDF files", accept_multiple_files=True, type='pdf')
     if uploaded_files:
         document_texts = {}
@@ -44,9 +65,23 @@ if option == "Upload Documents":
                     text = page.extract_text()
                     if text:
                         full_text += text
-                document_texts[uploaded_file.name] = full_text
+            document_texts[uploaded_file.name] = full_text
+            # Insert each document into the database
+            new_document = Document(title=uploaded_file.name, content=full_text)
+            session.add(new_document)
+        session.commit()  # Commit the transaction to the database
         st.session_state['documents'] = document_texts
         st.success("Files uploaded and text extracted successfully!")
+
+# View documents
+elif option == "View Documents":
+    st.header("View Uploaded Documents")
+    documents = session.query(Document).all()
+    if documents:
+        for doc in documents:
+            st.subheader(f"Document ID: {doc.id}, Title: {doc.title}")
+    else:
+        st.write("No documents found.")
 
 elif option == "Frequency Matrix":
     st.header("Frequency Matrix")
@@ -74,9 +109,9 @@ elif option == "Frequency Matrix":
         st.write("Term-Document Frequency Matrix:")
         st.dataframe(df_freq)
         st.session_state['df_freq'] = df_freq
-
     else:
         st.error("Please upload documents first using the 'Upload Documents' section.")
+
 
 # ... [The previous parts of your script remain unchanged]
 
@@ -90,14 +125,10 @@ elif option == "Indexing Terms":
         if 'df_freq' in st.session_state:
             df_freq = st.session_state['df_freq']  # Retrieve the frequency matrix
 
-            # Ensure terms are mapped correctly (if using TfidfVectorizer earlier, otherwise assume df_freq has proper terms)
-            if 'vectorizer' in st.session_state:
-                terms = st.session_state['vectorizer'].get_feature_names_out()
-            else:
-                terms = df_freq.index  # Assuming df_freq's index contains the actual term names
+            terms = df_freq.index  # Assuming df_freq's index contains the actual term names
 
             # Perform SVD
-            U, Sigma, VT = np.linalg.svd(df_freq, full_matrices=False)
+            U, Sigma, VT = svd(df_freq, full_matrices=False)
 
             # Determine the number of terms to retain
             k = min(num_terms_to_retain, len(Sigma))
@@ -109,7 +140,7 @@ elif option == "Indexing Terms":
 
             # Display the truncated U matrix with terms
             st.write("Truncated U matrix (Term-Concepts):")
-            U_k_df = pd.DataFrame(U_k, index=terms[:len(U)], columns=[f'Component_{i}' for i in range(k)])
+            U_k_df = pd.DataFrame(U_k, index=terms[:len(U)], columns=[f'Document {i}' for i in range(k)])
             st.dataframe(U_k_df)
 
             # Display the singular values (Sigma) alongside the terms
@@ -121,27 +152,12 @@ elif option == "Indexing Terms":
             st.write("Truncated VT matrix (Concept-Documents):")
             VT_k_df = pd.DataFrame(VT_k, columns=df_freq.columns)
             st.dataframe(VT_k_df)
-
-            # Explained variance
-            st.write("Explained variance by retained components:")
-            total_variance = np.sum(Sigma**2)
-            explained_variance = [(s**2 / total_variance) for s in Sigma_k]
-            st.bar_chart(explained_variance)
         else:
             st.error("Please calculate the frequency matrix first.")
 
-
-
-
-
 elif option == "Document Query":
     st.header("Document Query using SQL")
-    # Placeholder for actual querying functionality
-    st.subheader("Execute queries to find document similarities and relevancies")
-
-elif option == "Document Query":
-    st.header("Document Query using SQL")
-    st.subheader("Execute queries to find document similarities and relevancies")
+    st.subheader("Execute queries to find document similarities, dissimilarities and relevancies")
     # Inputs for SQL-based document querying
     st.write("Query the document base to evaluate similarities or fetch the most relevant documents based on your query.")
     
