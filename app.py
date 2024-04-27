@@ -55,7 +55,7 @@ elif option == "Frequency Matrix":
         doc_data = [{"Identifier": f"d{i+1}", "Article Title": text.split('\n')[0]} for i, text in enumerate(st.session_state['documents'].values())]
         df_docs = pd.DataFrame(doc_data)
         st.table(df_docs)
-
+        
         # Process each document for word frequencies
         doc_frequencies = defaultdict(dict)
         doc_names = list(st.session_state['documents'].keys())
@@ -73,84 +73,66 @@ elif option == "Frequency Matrix":
 
         st.write("Term-Document Frequency Matrix:")
         st.dataframe(df_freq)
+        st.session_state['df_freq'] = df_freq
 
     else:
         st.error("Please upload documents first using the 'Upload Documents' section.")
 
+# ... [The previous parts of your script remain unchanged]
+
 elif option == "Indexing Terms":
     st.header("Indexing Terms")
-    st.subheader("Apply SVD to reduce dimensionality and focus on significant terms")
-    if 'documents' in st.session_state and st.session_state['documents']:
-        # Prepare the text data for SVD
-        documents = [text for text in st.session_state['documents'].values()]
-        vectorizer = TfidfVectorizer(tokenizer=process_text, stop_words='english')
-        X = vectorizer.fit_transform(documents)
-        # Perform SVD
-        svd_model = TruncatedSVD(n_components=2, random_state=42)
-        lsa = svd_model.fit_transform(X)
+    st.subheader("Decompose the frequency matrix using SVD")
 
-        np.random.seed(42)
-        mock_data = np.random.randint(1, 20, size=(10, 5))  # Replace with your actual frequency matrix
-        frequency_matrix = pd.DataFrame(mock_data, columns=[f'Doc {i+1}' for i in range(mock_data.shape[1])],
-        index=[f'Term {i+1}' for i in range(mock_data.shape[0])])
+    num_terms_to_retain = st.number_input('Enter the number of terms to retain (K):', min_value=1, max_value=None, value=200)
 
-        st.write("Frequency Matrix `FrecT`:")
-        st.dataframe(frequency_matrix)
+    if st.button('Perform SVD'):
+        if 'df_freq' in st.session_state:
+            df_freq = st.session_state['df_freq']  # Retrieve the frequency matrix
 
-        U, s, VT = svd(frequency_matrix.values, full_matrices=False)
-        Sigma = np.diag(s)
+            # Ensure terms are mapped correctly (if using TfidfVectorizer earlier, otherwise assume df_freq has proper terms)
+            if 'vectorizer' in st.session_state:
+                terms = st.session_state['vectorizer'].get_feature_names_out()
+            else:
+                terms = df_freq.index  # Assuming df_freq's index contains the actual term names
 
-        # Convert SVD components into DataFrame for display
-        U_df = pd.DataFrame(U, index=[f'Term {i+1}' for i in range(U.shape[0])])
-        Sigma_df = pd.DataFrame(Sigma)
-        VT_df = pd.DataFrame(VT, columns=[f'Doc {i+1}' for i in range(VT.shape[1])])
+            # Perform SVD
+            U, Sigma, VT = np.linalg.svd(df_freq, full_matrices=False)
 
-        # Display SVD components
-        st.write("Left Singular Vectors (U matrix):")
-        st.dataframe(U_df)
+            # Determine the number of terms to retain
+            k = min(num_terms_to_retain, len(Sigma))
 
-        st.write("Singular Values (Sigma matrix):")
-        st.dataframe(Sigma_df)
+            # Truncate matrices
+            U_k = U[:, :k]
+            Sigma_k = Sigma[:k]
+            VT_k = VT[:k, :]
 
-        st.write("Right Singular Vectors Transposed (`VT` matrix):")
-        st.dataframe(VT_df)
+            # Display the truncated U matrix with terms
+            st.write("Truncated U matrix (Term-Concepts):")
+            U_k_df = pd.DataFrame(U_k, index=terms[:len(U)], columns=[f'Component_{i}' for i in range(k)])
+            st.dataframe(U_k_df)
 
-        st.write("""
-        Given a frequency matrix `FrecT`, it can be decomposed into an SVD `T x S x D^T`, where `S` is non-increasing.
-        The dimensions of `T` are MxR, `S` is RxR, and `D^T` is RxN.
-        In this decomposition, M is the number of terms, N is the number of documents, and R is the rank of the matrix.
-        """)
-        # Plot the documents in the concept space
-        fig, ax = plt.subplots()
-        ax.scatter(lsa[:, 0], lsa[:, 1])
-        ax.set_title('Document Clustering Post SVD')
-        ax.set_xlabel('Component 1')
-        ax.set_ylabel('Component 2')
+            # Display the singular values (Sigma) alongside the terms
+            st.write("Truncated Sigma (Singular Values):")
+            Sigma_k_df = pd.DataFrame({'Singular Value': Sigma_k}, index=terms[:k])
+            st.dataframe(Sigma_k_df)
 
-        for i, txt in enumerate(st.session_state['documents'].keys()):
-            ax.annotate(txt, (lsa[i, 0], lsa[i, 1]))
+            # Display the truncated VT matrix
+            st.write("Truncated VT matrix (Concept-Documents):")
+            VT_k_df = pd.DataFrame(VT_k, columns=df_freq.columns)
+            st.dataframe(VT_k_df)
 
-        st.pyplot(fig)
-
-
-        # Display the singular values (importance of each component)
-        st.write("Singular values:", svd_model.singular_values_)
-
-        # Display the top significant terms per topic/component
-        terms = vectorizer.get_feature_names_out()
-        for i, comp in enumerate(svd_model.components_):
-            terms_comp = zip(terms, comp)
-            sorted_terms = sorted(terms_comp, key=lambda x: x[1], reverse=True)[:10]
-            st.write("Topic " + str(i+1) + ": ")
-            for t in sorted_terms:
-                st.write(t[0], round(t[1], 3))
+            # Explained variance
+            st.write("Explained variance by retained components:")
+            total_variance = np.sum(Sigma**2)
+            explained_variance = [(s**2 / total_variance) for s in Sigma_k]
+            st.bar_chart(explained_variance)
+        else:
+            st.error("Please calculate the frequency matrix first.")
 
 
 
-        
 
-    else:
-        st.error("Please upload documents first.")
 
 elif option == "Document Query":
     st.header("Document Query using SQL")
