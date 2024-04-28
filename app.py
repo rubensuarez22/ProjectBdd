@@ -191,7 +191,7 @@ elif option == "Indexing Terms":
     st.header("Indexing Terms")
     st.subheader("Decompose the frequency matrix using SVD")
 
-    num_terms_to_retain = st.number_input('Enter the number of terms to retain (K):', min_value=1, max_value=None, value=200)
+    num_terms_to_retain = st.number_input('Enter the number of terms to retain (K):', min_value=1, max_value=None, value=5)
 
     if st.button('Perform SVD'):
         if 'df_freq' in st.session_state:
