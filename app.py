@@ -8,6 +8,8 @@ from nltk.stem import PorterStemmer
 from nltk.tokenize import word_tokenize
 import matplotlib.pyplot as plt
 from numpy.linalg import svd as svd
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine, Column, Integer, String, Text
@@ -32,6 +34,26 @@ Base.metadata.create_all(engine)
 
 Session = sessionmaker(bind=engine)
 session = Session()
+    
+def cosine_function(doc1_title, doc2_title):
+    # Fetch documents from the database
+    doc1 = session.query(Document).filter(Document.title == doc1_title).first()
+    doc2 = session.query(Document).filter(Document.title == doc2_title).first()
+
+    if not doc1 or not doc2:
+        return "One or both documents could not be found."
+
+    # Prepare documents
+    documents = [doc1.content, doc2.content]
+
+    # Compute TF-IDF vectors
+    vectorizer = TfidfVectorizer()
+    tfidf_matrix = vectorizer.fit_transform(documents)
+
+    # Calculate cosine similarity
+    sim_score = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])
+
+    return sim_score[0][0]
 
 st.title("Advanced Document Management System")
 
@@ -237,6 +259,3 @@ elif option == "Document Query":
         st.write(f"Fetching {n_docs} most relevant documents for the query: `{query}`")
         for doc in relevant_documents:
             st.write(doc)
-
-
-# The st.button will rerun the script from the top when clicked, so state management might be necessary for more complex interactions.
