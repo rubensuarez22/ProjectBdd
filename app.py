@@ -8,7 +8,7 @@ from nltk.stem import PorterStemmer
 from nltk.tokenize import word_tokenize
 import matplotlib.pyplot as plt
 from numpy.linalg import svd as svd
-from sklearn.feature_extraction.text import TfidfVectorizer
+import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -35,7 +35,7 @@ Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 session = Session()
     
-def cosine_function(doc1_title, doc2_title):
+def manhattan_function(doc1_title, doc2_title, VT):
     # Fetch documents from the database
     doc1 = session.query(Document).filter(Document.title == doc1_title).first()
     doc2 = session.query(Document).filter(Document.title == doc2_title).first()
@@ -43,17 +43,45 @@ def cosine_function(doc1_title, doc2_title):
     if not doc1 or not doc2:
         return "One or both documents could not be found."
 
-    # Prepare documents
-    documents = [doc1.content, doc2.content]
+    # Get document IDs
+    id1 = doc1.id - 1  # Adjusting for 0-based index
+    id2 = doc2.id - 1  # Adjusting for 0-based index
 
-    # Compute TF-IDF vectors
-    vectorizer = TfidfVectorizer()
-    tfidf_matrix = vectorizer.fit_transform(documents)
+    # Extract columns corresponding to the document IDs from the transposed matrix VT
+    vector1 = VT[:, id1]
+    vector2 = VT[:, id2]
+
+    distance = sum(abs(vector1 - vector2))
+
+    return distance
+
+def cosine_function(doc1_title, doc2_title, VT):
+    # Fetch documents from the database
+    doc1 = session.query(Document).filter(Document.title == doc1_title).first()
+    doc2 = session.query(Document).filter(Document.title == doc2_title).first()
+
+    if not doc1 or not doc2:
+        return "One or both documents could not be found."
+
+    # Get document IDs adjusted for 0-based indexing
+    id1 = doc1.id - 1
+    id2 = doc2.id - 1
+
+    # Extract columns corresponding to the document IDs from the transposed matrix VT
+    vector1 = VT[:, id1].reshape(1, -1)  # Reshape to 2D array for cosine_similarity
+    vector2 = VT[:, id2].reshape(1, -1)  # Reshape to 2D array for cosine_similarity
+    st.write(vector1)
+    st.write(vector2)
 
     # Calculate cosine similarity
-    sim_score = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])
+    similarity = cosine_similarity(vector1, vector2)[0][0]
 
-    return sim_score[0][0]
+
+    return similarity
+
+def inproduct_function(doc1_title, doc2_title, VT):
+    
+    return 
 
 st.title("Advanced Document Management System")
 
@@ -184,9 +212,6 @@ elif option == "Frequency Matrix":
     else:
         st.error("No documents found. Please upload documents first.")
 
-
-
-
 elif option == "Indexing Terms":
     st.header("Indexing Terms")
     st.subheader("Decompose the frequency matrix using SVD")
@@ -209,6 +234,7 @@ elif option == "Indexing Terms":
             U_k = U[:, :k]
             Sigma_k = Sigma[:k]
             VT_k = VT[:k, :]
+            st.session_state['VT'] = VT_k
 
             # Display the truncated U matrix with terms
             st.write("Truncated U matrix (Term-Concepts):")
@@ -234,28 +260,31 @@ elif option == "Document Query":
     # Dropdown for choosing similarity function
     function = st.selectbox(
         "Choose a function",
-        ("Cosine Similarity", "Internal product","Euclidean Distance")
+        ("Cosine Similarity", "Manhattan Distance","Internal product Similarity")
     )
     
+    VT = st.session_state['VT']
+
     # Text input for document names/IDs
     doc1 = st.text_input("Enter the first document name/id:", key="doc1")
     doc2 = st.text_input("Enter the second document name/id:", key="doc2")
-    
+
     if st.button("Evaluation between Documents"):
         if function == "Cosine Similarity":
-            similarity = cosine_function(doc1, doc2)
-        elif function == "Euclidean Distance":
-            similarity = euclidean_function(doc1, doc2)
-        elif function == "Jaccard Similarity":
-            similarity = jaccard_function(doc1, doc2)
-        
-        st.write(f"Similarity result between documents {doc1} and {doc2}: {similarity}")
+            similarity = cosine_function(doc1, doc2, VT)
+            st.write(f"Similarity result between documents {doc1} and {doc2}: {similarity:.4f}") 
+        elif function == "Manhattan Distance":
+            dissimilarity = manhattan_function(doc1, doc2, VT)
+            st.write(f"Dissimilarity result between documents {doc1} and {doc2}: {dissimilarity:.4f}") 
+        elif function == "Internal product Similarity":
+            similarity = inproduct_function(doc1, doc2, VT)
+            st.write(f"Similarity result between documents {doc1} and {doc2}: {similarity:.4f}") 
 
     st.write("### Document Relevancy")
     query = st.text_input("Enter your query:", key="query")
     n_docs = st.slider("Select number of documents", 1, 10, 5, key="n_docs")
     if st.button("Fetch Documents Based on Query"):
-        relevant_documents = fetch_documents_based_on_query(query, n_docs)
+        relevant_documents = fetch_query(query, n_docs)
         st.write(f"Fetching {n_docs} most relevant documents for the query: `{query}`")
         for doc in relevant_documents:
             st.write(doc)
