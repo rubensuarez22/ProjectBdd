@@ -96,7 +96,6 @@ if option == "Upload Documents":
             new_document = Document(title=uploaded_file.name, content=full_text)
             session.add(new_document)
         session.commit()  # Commit the transaction to the database
-        st.session_state['documents'] = document_texts
         st.success("Files uploaded and text extracted successfully!")
 
 # View documents
@@ -111,17 +110,19 @@ elif option == "View Documents":
 
 elif option == "Frequency Matrix":
     st.header("Frequency Matrix")
-    if 'documents' in st.session_state and st.session_state['documents']:
+    documents = session.query(Document).all()  # Fetch all documents from the database
+    
+    if documents:
         matrix_data = {}
-        doc_names = list(st.session_state['documents'].keys())
+        doc_names = [doc.title for doc in documents]  # Use document titles as identifiers
 
         for matrix_type, processing_function in document_processing_functions.items():
             doc_frequencies = defaultdict(dict)
-            for doc_name, text in st.session_state['documents'].items():
-                processed_text = processing_function(text)
+            for doc in documents:
+                processed_text = processing_function(doc.content)  # Process text of each document
                 word_count = Counter(processed_text)
                 for word, count in word_count.items():
-                    doc_frequencies[word][doc_name] = count
+                    doc_frequencies[word][doc.title] = count
 
             # Create DataFrame from the nested dictionary
             df = pd.DataFrame.from_dict(doc_frequencies, orient='index').fillna(0).astype(int)
@@ -132,11 +133,12 @@ elif option == "Frequency Matrix":
 
         for name, df in matrix_data.items():
             if name == "Word Stems":
-                st.session_state['df_freq'] = df
+                st.session_state['df_freq'] = df  # Optionally store one matrix type for later use
             st.write(f"{name} Frequency Matrix:")
             st.dataframe(df)
     else:
-        st.error("Please upload documents first using the 'Upload Documents' section.")
+        st.error("No documents found. Please upload documents first.")
+
 
 elif option == "Indexing Terms":
     st.header("Indexing Terms")
