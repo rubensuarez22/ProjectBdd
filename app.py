@@ -93,7 +93,7 @@ if option == "Upload Documents":
                         full_text += text
             document_texts[uploaded_file.name] = full_text
             # Insert each document into the database
-            new_document = Document(title=uploaded_file.name, content=full_text)
+            new_document = Document(title=uploaded_file.name.replace('.pdf', ''), content=full_text)
             session.add(new_document)
         session.commit()  # Commit the transaction to the database
         st.success("Files uploaded and text extracted successfully!")
@@ -182,20 +182,36 @@ elif option == "Indexing Terms":
 
 elif option == "Document Query":
     st.header("Document Query using SQL")
-    st.subheader("Execute queries to find document similarities, dissimilarities and relevancies")
-    # Inputs for SQL-based document querying
-    st.write("Query the document base to evaluate similarities or fetch the most relevant documents based on your query.")
+    st.subheader("Execute queries to find document similarities, dissimilarities, and relevancies")
     
-    st.write("### Document Similarity")
+    # Dropdown for choosing similarity function
+    function = st.selectbox(
+        "Choose a function",
+        ("Cosine Similarity", "Internal product","Euclidean Distance")
+    )
+    
+    # Text input for document names/IDs
     doc1 = st.text_input("Enter the first document name/id:", key="doc1")
     doc2 = st.text_input("Enter the second document name/id:", key="doc2")
-    if st.button("Evaluate Similarity between Documents"):
-        st.write(f"Similarity result between documents {doc1} and {doc2} would be calculated and shown here.")
+    
+    if st.button("Evaluation between Documents"):
+        if function == "Cosine Similarity":
+            similarity = cosine_function(doc1, doc2)
+        elif function == "Euclidean Distance":
+            similarity = euclidean_function(doc1, doc2)
+        elif function == "Jaccard Similarity":
+            similarity = jaccard_function(doc1, doc2)
+        
+        st.write(f"Similarity result between documents {doc1} and {doc2}: {similarity}")
 
     st.write("### Document Relevancy")
     query = st.text_input("Enter your query:", key="query")
-    n_docs = st.slider("Select number of documents", 1, 20, 5, key="n_docs")
+    n_docs = st.slider("Select number of documents", 1, 10, 5, key="n_docs")
     if st.button("Fetch Documents Based on Query"):
+        relevant_documents = fetch_documents_based_on_query(query, n_docs)
         st.write(f"Fetching {n_docs} most relevant documents for the query: `{query}`")
+        for doc in relevant_documents:
+            st.write(doc)
+
 
 # The st.button will rerun the script from the top when clicked, so state management might be necessary for more complex interactions.
