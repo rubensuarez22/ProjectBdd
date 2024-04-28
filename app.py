@@ -131,6 +131,8 @@ elif option == "Frequency Matrix":
             matrix_data[matrix_type] = df
 
         for name, df in matrix_data.items():
+            if name == "Word Stems":
+                st.session_state['df_freq'] = df
             st.write(f"{name} Frequency Matrix:")
             st.dataframe(df)
     else:
