@@ -2,6 +2,7 @@ import streamlit as st
 import pdfplumber
 from collections import Counter, defaultdict
 import pandas as pd
+import numpy as np
 import nltk
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
@@ -34,53 +35,48 @@ Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 session = Session()
     
-def manhattan_function(doc1_title, doc2_title, VT):
-    # Fetch documents from the database
-    doc1 = session.query(Document).filter(Document.title == doc1_title).first()
-    doc2 = session.query(Document).filter(Document.title == doc2_title).first()
+import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
 
-    if not doc1 or not doc2:
+def manhattan_function(doc1_title, doc2_title, df_freq):
+    if doc1_title not in df_freq.columns or doc2_title not in df_freq.columns:
         return "One or both documents could not be found."
 
-    # Get document IDs
-    id1 = doc1.id - 1  # Adjusting for 0-based index
-    id2 = doc2.id - 1  # Adjusting for 0-based index
+    # Extract vectors corresponding to the document titles
+    vector1 = df_freq[doc1_title].values
+    vector2 = df_freq[doc2_title].values
 
-    # Extract columns corresponding to the document IDs from the transposed matrix VT
-    vector1 = VT[:, id1]
-    vector2 = VT[:, id2]
-
-    distance = sum(abs(vector1 - vector2))
+    # Calculate Manhattan distance
+    distance = np.sum(np.abs(vector1 - vector2))
 
     return distance
 
-def cosine_function(doc1_title, doc2_title, VT):
-    # Fetch documents from the database
-    doc1 = session.query(Document).filter(Document.title == doc1_title).first()
-    doc2 = session.query(Document).filter(Document.title == doc2_title).first()
-
-    if not doc1 or not doc2:
+def cosine_function(doc1_title, doc2_title, df_freq):
+    if doc1_title not in df_freq.columns or doc2_title not in df_freq.columns:
         return "One or both documents could not be found."
 
-    # Get document IDs adjusted for 0-based indexing
-    id1 = doc1.id - 1
-    id2 = doc2.id - 1
-
-    # Extract columns corresponding to the document IDs from the transposed matrix VT
-    vector1 = VT[:, id1].reshape(1, -1)  # Reshape to 2D array for cosine_similarity
-    vector2 = VT[:, id2].reshape(1, -1)  # Reshape to 2D array for cosine_similarity
-    st.write(vector1)
-    st.write(vector2)
+    # Extract vectors as 2D arrays for cosine_similarity
+    vector1 = df_freq[doc1_title].values.reshape(1, -1)
+    vector2 = df_freq[doc2_title].values.reshape(1, -1)
 
     # Calculate cosine similarity
     similarity = cosine_similarity(vector1, vector2)[0][0]
 
-
     return similarity
 
-def inproduct_function(doc1_title, doc2_title, VT):
-    
-    return 
+def inproduct_function(doc1_title, doc2_title, df_freq):
+    if doc1_title not in df_freq.columns or doc2_title not in df_freq.columns:
+        return "One or both documents could not be found."
+
+    # Extract vectors
+    vector1 = df_freq[doc1_title].values
+    vector2 = df_freq[doc2_title].values
+
+    # Calculate the internal product (dot product)
+    internal_product = np.dot(vector1, vector2)
+
+    return internal_product
+
 
 st.title("Advanced Document Management System")
 
@@ -182,9 +178,9 @@ elif option == "Frequency Matrix":
 
                 # Create DataFrame from the nested dictionary
                 df = pd.DataFrame.from_dict(doc_frequencies, orient='index').fillna(0).astype(int)
-                # Rename columns to identifiers like d1, d2, etc.
-                doc_ids = {doc_name: f"d{i+1}" for i, doc_name in enumerate(doc_names)}
-                df.rename(columns=doc_ids, inplace=True)
+                # Use document titles directly as column names
+                df = df.reindex(columns=doc_names, fill_value=0)  # Ensure all selected documents are represented even if no data
+
                 matrix_data[matrix_type] = df
 
             tabFreqMatrix, tabStopList, tabSuffixRem, tabWordStem = st.tabs([
@@ -210,6 +206,7 @@ elif option == "Frequency Matrix":
             st.error("No documents selected. Please select documents first.")
     else:
         st.error("No documents found. Please upload documents first.")
+
 
 if option == "Indexing Terms":
     st.header("Indexing Terms")
@@ -245,11 +242,9 @@ if option == "Indexing Terms":
             # VT_k is accessible through svd_model.components_
             VT_k = svd_model.components_
 
-            st.session_state['VT'] = VT_k
-
             # Display the truncated U matrix with terms
             st.write("Truncated U matrix (Term-Concepts):")
-            U_k_df = pd.DataFrame(U_k, index=terms, columns=[f'Concept {i+1}' for i in range(num_terms_to_retain)])
+            U_k_df = pd.DataFrame(U_k, index=terms, columns=[f'{doc}' for doc in df_freq.columns[:num_terms_to_retain]])
             st.dataframe(U_k_df)
 
             # Display the singular values (Sigma)
@@ -275,7 +270,7 @@ elif option == "Document Query":
         ("Cosine Similarity", "Manhattan Distance","Internal product Similarity")
     )
     
-    VT = st.session_state['VT']
+    df_freq = st.session_state['df_freq']
 
     # Text input for document names/IDs
     doc1 = st.text_input("Enter the first document name/id:", key="doc1")
@@ -283,14 +278,14 @@ elif option == "Document Query":
 
     if st.button("Evaluation between Documents"):
         if function == "Cosine Similarity":
-            similarity = cosine_function(doc1, doc2, VT)
-            st.write(f"Similarity result between documents {doc1} and {doc2}: {similarity}") 
-        elif function == "Manhattan Distance":
-            dissimilarity = manhattan_function(doc1, doc2, VT)
-            st.write(f"Dissimilarity result between documents {doc1} and {doc2}: {dissimilarity:.4f}") 
-        elif function == "Internal product Similarity":
-            similarity = inproduct_function(doc1, doc2, VT)
+            similarity = cosine_function(doc1, doc2, df_freq)
             st.write(f"Similarity result between documents {doc1} and {doc2}: {similarity:.4f}") 
+        elif function == "Manhattan Distance":
+            dissimilarity = manhattan_function(doc1, doc2, df_freq)
+            st.write(f"Dissimilarity result between documents {doc1} and {doc2}: {dissimilarity}") 
+        elif function == "Internal product Similarity":
+            similarity = inproduct_function(doc1, doc2, df_freq)
+            st.write(f"Similarity result between documents {doc1} and {doc2}: {similarity}") 
 
     st.write("### Document Relevancy")
     query = st.text_input("Enter your query:", key="query")
