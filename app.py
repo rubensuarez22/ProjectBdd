@@ -2,14 +2,12 @@ import streamlit as st
 import pdfplumber
 from collections import Counter, defaultdict
 import pandas as pd
-from sklearn.decomposition import TruncatedSVD
 import nltk
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
 from nltk.tokenize import word_tokenize
-import matplotlib.pyplot as plt
 from numpy.linalg import svd as svd
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.decomposition import TruncatedSVD
 from sklearn.metrics.pairwise import cosine_similarity
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -213,7 +211,7 @@ elif option == "Frequency Matrix":
     else:
         st.error("No documents found. Please upload documents first.")
 
-elif option == "Indexing Terms":
+if option == "Indexing Terms":
     st.header("Indexing Terms")
     st.subheader("Decompose the frequency matrix using SVD")
 
@@ -225,26 +223,38 @@ elif option == "Indexing Terms":
 
             terms = df_freq.index  # Assuming df_freq's index contains the actual term names
 
+            # Initialize TruncatedSVD
+            svd_model = TruncatedSVD(n_components=num_terms_to_retain, random_state=42)
+            U_k = svd_model.fit_transform(df_freq)  # Fit and transform the frequency matrix to get U_k
+
             # Perform SVD
-            U, Sigma, VT = svd(df_freq, full_matrices=False)
+            Us, Sigmas, VTs = svd(df_freq, full_matrices=False)
 
             # Determine the number of terms to retain
-            k = min(num_terms_to_retain, len(Sigma))
+            k = min(num_terms_to_retain, len(Sigmas))
 
             # Truncate matrices
-            U_k = U[:, :k]
-            Sigma_k = Sigma[:k]
-            VT_k = VT[:k, :]
+            U_k = Us[:, :k]
+
+            # Invert the sign of each element in U_k
+            U_k = -U_k
+
+            # Sigma values are accessible through svd_model.singular_values_
+            Sigma_k = svd_model.singular_values_
+
+            # VT_k is accessible through svd_model.components_
+            VT_k = svd_model.components_
+
             st.session_state['VT'] = VT_k
 
             # Display the truncated U matrix with terms
             st.write("Truncated U matrix (Term-Concepts):")
-            U_k_df = pd.DataFrame(U_k, index=terms[:len(U)], columns=[f'Document {i}' for i in range(k)])
+            U_k_df = pd.DataFrame(U_k, index=terms, columns=[f'Concept {i+1}' for i in range(num_terms_to_retain)])
             st.dataframe(U_k_df)
 
-            # Display the singular values (Sigma) alongside the terms
+            # Display the singular values (Sigma)
             st.write("Truncated Sigma (Singular Values):")
-            Sigma_k_df = pd.DataFrame({'Singular Value': Sigma_k}, index=terms[:k])
+            Sigma_k_df = pd.DataFrame({'Singular Value': Sigma_k}, index=[f'Concept {i+1}' for i in range(len(Sigma_k))])
             st.dataframe(Sigma_k_df)
 
             # Display the truncated VT matrix
@@ -253,6 +263,7 @@ elif option == "Indexing Terms":
             st.dataframe(VT_k_df)
         else:
             st.error("Please calculate the frequency matrix first.")
+
 
 elif option == "Document Query":
     st.header("Document Query using SQL")
@@ -273,7 +284,7 @@ elif option == "Document Query":
     if st.button("Evaluation between Documents"):
         if function == "Cosine Similarity":
             similarity = cosine_function(doc1, doc2, VT)
-            st.write(f"Similarity result between documents {doc1} and {doc2}: {similarity:.4f}") 
+            st.write(f"Similarity result between documents {doc1} and {doc2}: {similarity}") 
         elif function == "Manhattan Distance":
             dissimilarity = manhattan_function(doc1, doc2, VT)
             st.write(f"Dissimilarity result between documents {doc1} and {doc2}: {dissimilarity:.4f}") 
