@@ -111,33 +111,58 @@ elif option == "View Documents":
 elif option == "Frequency Matrix":
     st.header("Frequency Matrix")
     documents = session.query(Document).all()  # Fetch all documents from the database
-    
+
     if documents:
-        matrix_data = {}
-        doc_names = [doc.title for doc in documents]  # Use document titles as identifiers
+        doc_titles = [doc.title for doc in documents]  # Use document titles for selection
+        selected_titles = st.multiselect('Choose documents', doc_titles, default=doc_titles)
 
-        for matrix_type, processing_function in document_processing_functions.items():
-            doc_frequencies = defaultdict(dict)
-            for doc in documents:
-                processed_text = processing_function(doc.content)  # Process text of each document
-                word_count = Counter(processed_text)
-                for word, count in word_count.items():
-                    doc_frequencies[word][doc.title] = count
+        # Filter documents based on selection
+        selected_documents = [doc for doc in documents if doc.title in selected_titles]
 
-            # Create DataFrame from the nested dictionary
-            df = pd.DataFrame.from_dict(doc_frequencies, orient='index').fillna(0).astype(int)
-            # Rename columns to identifiers like d1, d2, etc.
-            doc_ids = {doc_name: f"d{i+1}" for i, doc_name in enumerate(doc_names)}
-            df.rename(columns=doc_ids, inplace=True)
-            matrix_data[matrix_type] = df
+        if selected_documents:
+            matrix_data = {}
+            doc_names = [doc.title for doc in selected_documents]  # Use document titles as identifiers
 
-        for name, df in matrix_data.items():
-            if name == "Word Stems":
-                st.session_state['df_freq'] = df  # Optionally store one matrix type for later use
-            st.write(f"{name} Frequency Matrix:")
-            st.dataframe(df)
+            for matrix_type, processing_function in document_processing_functions.items():
+                doc_frequencies = defaultdict(dict)
+                for doc in selected_documents:
+                    processed_text = processing_function(doc.content)  # Process text of each document
+                    word_count = Counter(processed_text)
+                    for word, count in word_count.items():
+                        doc_frequencies[word][doc.title] = count
+
+                # Create DataFrame from the nested dictionary
+                df = pd.DataFrame.from_dict(doc_frequencies, orient='index').fillna(0).astype(int)
+                # Rename columns to identifiers like d1, d2, etc.
+                doc_ids = {doc_name: f"d{i+1}" for i, doc_name in enumerate(doc_names)}
+                df.rename(columns=doc_ids, inplace=True)
+                matrix_data[matrix_type] = df
+
+            tabFreqMatrix, tabStopList, tabSuffixRem, tabWordStem = st.tabs([
+                "Original Frequency Matrix", 
+                "Stop List Removed Frequency Matrix", 
+                "Suffix List Removed Frequency Matrix", 
+                "Word Stems Frequency Matrix"
+            ])
+
+            # Use columns to center the DataFrame within each tab
+            for tab, key in zip(
+                [tabFreqMatrix, tabStopList, tabSuffixRem, tabWordStem], 
+                ["Original", "Stop List Removed", "Suffix List Removed", "Word Stems"]
+            ):
+                col1, col2, col3 = tab.columns([1, 8, 1])  # Proportional width: 1:8:1
+                with col2:
+                    tab.dataframe(matrix_data.get(key, pd.DataFrame()))
+
+            # Optionally store one matrix type for later use
+            if "Word Stems" in matrix_data:
+                st.session_state['df_freq'] = matrix_data["Word Stems"]
+        else:
+            st.error("No documents selected. Please select documents first.")
     else:
         st.error("No documents found. Please upload documents first.")
+
+
 
 
 elif option == "Indexing Terms":
