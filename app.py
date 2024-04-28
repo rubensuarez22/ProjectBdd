@@ -2,13 +2,14 @@ import streamlit as st
 import pdfplumber
 from collections import Counter, defaultdict
 import pandas as pd
+from sklearn.decomposition import TruncatedSVD
 import nltk
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
 from nltk.tokenize import word_tokenize
 import matplotlib.pyplot as plt
 from numpy.linalg import svd as svd
-import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
