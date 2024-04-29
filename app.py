@@ -207,7 +207,6 @@ elif option == "Frequency Matrix":
     else:
         st.error("No documents found. Please upload documents first.")
 
-
 if option == "Indexing Terms":
     st.header("Indexing Terms")
     st.subheader("Decompose the frequency matrix using SVD")
@@ -258,7 +257,6 @@ if option == "Indexing Terms":
             st.dataframe(VT_k_df)
         else:
             st.error("Please calculate the frequency matrix first.")
-
 
 elif option == "Document Query":
     st.header("Document Query using SQL")
