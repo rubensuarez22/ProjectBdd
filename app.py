@@ -38,16 +38,26 @@ session = Session()
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
-def manhattan_function(doc1_title, doc2_title, df_freq):
-    if doc1_title not in df_freq.columns or doc2_title not in df_freq.columns:
+def manhattan_function(doc1_title, doc2_title, VT):
+    # Fetch documents from the database
+    doc1 = session.query(Document).filter(Document.title == doc1_title).first()
+    doc2 = session.query(Document).filter(Document.title == doc2_title).first()
+
+    if not doc1 or not doc2:
         return "One or both documents could not be found."
 
-    # Extract vectors corresponding to the document titles
-    vector1 = df_freq[doc1_title].values
-    vector2 = df_freq[doc2_title].values
+    # Get document IDs
+    id1 = doc1.id - 1  # Adjusting for 0-based index
+    id2 = doc2.id - 1  # Adjusting for 0-based index
 
-    # Calculate Manhattan distance
-    distance = np.sum(np.abs(vector1 - vector2))
+    # Extract columns corresponding to the document IDs from the transposed matrix VT
+    vector1 = VT[:, id1]
+    vector2 = VT[:, id2]
+
+    # Calculate Manhattan distance by explicitly iterating over each element
+    distance = 0
+    for i in range(len(vector1)):
+        distance += abs(vector1[i] - vector2[i])
 
     return distance
 
@@ -108,6 +118,25 @@ def process_text_full(text):
     stop_words = set(stopwords.words('english'))
     stemmer = PorterStemmer()
     return [stemmer.stem(word) for word in tokens if word.isalpha() and word.lower() not in stop_words]
+
+def fetch_query(query, n_docs, df_freq, documents):
+    # Process the query
+    processed_query = process_text_full(query)
+    query_freq = Counter(processed_query)
+    query_vector = np.array([query_freq.get(term, 0) for term in df_freq.index])
+
+    similarities = {}
+    for title in df_freq.columns:
+        doc_vector = df_freq[title].values
+        similarity = cosine_similarity(query_vector.reshape(1, -1), doc_vector.reshape(1, -1))[0][0]
+        similarities[title] = similarity
+
+    # Sort documents by similarity
+    sorted_docs = sorted(similarities.items(), key=lambda x: x[1], reverse=True)
+
+    # Fetch top n documents
+    return sorted_docs[:n_docs]
+
 
 # Processing the documents based on the option
 document_processing_functions = {
@@ -240,6 +269,7 @@ if option == "Indexing Terms":
 
             # VT_k is accessible through svd_model.components_
             VT_k = svd_model.components_
+            st.session_state['VT'] = VT_k
 
             # Display the truncated U matrix with terms
             st.write("Truncated U matrix (Term-Concepts):")
@@ -269,7 +299,7 @@ elif option == "Document Query":
     )
     
     df_freq = st.session_state['df_freq']
-
+    VT = st.session_state['VT']
     # Text input for document names/IDs
     doc1 = st.text_input("Enter the first document name/id:", key="doc1")
     doc2 = st.text_input("Enter the second document name/id:", key="doc2")
@@ -279,17 +309,18 @@ elif option == "Document Query":
             similarity = cosine_function(doc1, doc2, df_freq)
             st.write(f"Similarity result between documents {doc1} and {doc2}: {similarity:.4f}") 
         elif function == "Manhattan Distance":
-            dissimilarity = manhattan_function(doc1, doc2, df_freq)
+            dissimilarity = manhattan_function(doc1, doc2, VT)
             st.write(f"Dissimilarity result between documents {doc1} and {doc2}: {dissimilarity}") 
         elif function == "Internal product Similarity":
             similarity = inproduct_function(doc1, doc2, df_freq)
             st.write(f"Similarity result between documents {doc1} and {doc2}: {similarity}") 
 
+
     st.write("### Document Relevancy")
     query = st.text_input("Enter your query:", key="query")
     n_docs = st.slider("Select number of documents", 1, 10, 5, key="n_docs")
     if st.button("Fetch Documents Based on Query"):
-        relevant_documents = fetch_query(query, n_docs)
-        st.write(f"Fetching {n_docs} most relevant documents for the query: `{query}`")
-        for doc in relevant_documents:
-            st.write(doc)
+        relevant_docs = fetch_query(query, n_docs, st.session_state['df_freq'], session.query(Document).all())
+        st.write(f"Top {n_docs} relevant documents:")
+        for doc_title, similarity in relevant_docs:
+            st.write(f"{doc_title} - {similarity:.4f}")
